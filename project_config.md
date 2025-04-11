@@ -8,7 +8,7 @@
 
 ## Core Goal
 
-Establish a functional local development environment connecting the Chrome Extension project (`sandeepsalwan1-newsfactchecker`) with a local Python/Flask backend (`svm_backend`). The backend will load a pre-trained SVM model (`claim_verifier_model.joblib`), expose an API, and serve predictions (true/false classification + confidence score) based on text claims sent from the extension. The extension needs to be configured to communicate with this local API.
+Establish a functional local development environment connecting the Chrome Extension project (`sandeepsalwan1-newsfactchecker`) with a local Python/Flask backend (`svm_backend`). The backend will load a pre-trained SVM model (`claim_verifier_model.joblib`), and serve predictions (true/false classification + confidence score) based on text claims sent from the extension. The extension needs to be configured to communicate with this local API.
 
 ---
 
