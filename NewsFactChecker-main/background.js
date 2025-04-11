@@ -7,6 +7,9 @@ const correctionCache = {};
 // Map to store evidence links for each correction
 const evidenceLinks = new Map();
 
+// API endpoint URL for the local Flask server
+const API_URL = "http://localhost:5000/predict";
+
 // Listener for messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle article processing request from content script
@@ -23,8 +26,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     Object.keys(correctionCache).forEach(key => delete correctionCache[key]);
     evidenceLinks.clear();
     
-    // Process the article using fact checking
-    processArticleWithAI(tabId, message.article)
+    // Process the article using the local Flask API
+    processArticleWithAPI(tabId, message.article)
       .then(results => {
         analyses[tabId].status = "complete";
         analyses[tabId].results = results;
@@ -66,16 +69,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Function to process article content using fact checking
-async function processArticleWithAI(tabId, article) {
+// Function to process article content using the local Flask API
+async function processArticleWithAPI(tabId, article) {
   // Get settings for analysis
   const settings = await getAnalysisSettings();
   
   // Step 1: Extract claims using pattern matching
   const claims = extractClaims(article.paragraphs);
   
-  // Step 2: Check each claim for factual accuracy
-  const checkedClaims = await Promise.all(claims.map(claim => factCheckClaim(claim, settings)));
+  // Step 2: Check each claim using the local Flask API
+  const checkedClaims = await Promise.all(
+    claims.map(claim => callFactCheckAPI(claim, settings))
+  );
   
   // Step 3: Generate overall analysis summary
   const results = generateAnalysisSummary(article, checkedClaims);
@@ -93,6 +98,97 @@ function getAnalysisSettings() {
       resolve(items);
     });
   });
+}
+
+// Function to call the Flask API for fact checking
+async function callFactCheckAPI(claim, settings) {
+  try {
+    // Make the API call to the local Flask server
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ claim })
+    });
+    
+    if (!response.ok) {
+      // Handle HTTP errors
+      const errorText = await response.text();
+      console.error(`API Error: ${response.status} - ${errorText}`);
+      
+      // Return a fallback response for error cases
+      return {
+        claim,
+        isTrue: true, // Default to true in case of errors
+        isUncertain: true,
+        confidence: 50,
+        explanation: "Unable to verify claim due to server error.",
+        sources: ["Local API"],
+        correction: null,
+        sourceURL: "",
+        evidenceText: ""
+      };
+    }
+    
+    // Parse the API response
+    const apiResult = await response.json();
+    
+    // Convert API response to the format expected by the extension
+    const isTrue = apiResult.isTrue;
+    const confidence = apiResult.confidence;
+    
+    // Generate simulated additional data for the demo
+    // These would be provided by a real API in a production environment
+    let explanation = "";
+    let correction = null;
+    let sourceURL = "";
+    let evidenceText = "";
+    
+    if (isTrue) {
+      explanation = "This claim appears to be supported by reliable sources.";
+    } else {
+      explanation = `This claim appears to be false based on our verification with ${confidence}% confidence.`;
+      
+      // Only for numerical claims, generate a correction
+      if (containsNumericalValue(claim)) {
+        const numericalValue = extractNumericalValues(claim)[0];
+        correction = generateRealisticCorrection(numericalValue, claim);
+        
+        // Generate evidence source
+        const evidenceSource = generateEvidenceSource(numericalValue, correction, claim);
+        sourceURL = evidenceSource.url;
+        evidenceText = evidenceSource.evidence;
+      }
+    }
+    
+    return {
+      claim,
+      isTrue,
+      isUncertain: confidence < 70,
+      confidence,
+      explanation,
+      sources: ["Local SVM Model"],
+      correction,
+      sourceURL,
+      evidenceText
+    };
+  } catch (error) {
+    console.error("API Call Error:", error);
+    
+    // Return a fallback response for network/connection errors
+    return {
+      claim,
+      isTrue: true, // Default to true in case of errors
+      isUncertain: true,
+      confidence: 50,
+      explanation: "Unable to verify claim due to connection error.",
+      sources: ["Connection Error"],
+      correction: null,
+      sourceURL: "",
+      evidenceText: ""
+    };
+  }
 }
 
 // Function to extract claims from article paragraphs
@@ -143,98 +239,15 @@ function extractClaims(paragraphs) {
   return claims.slice(0, 10);
 }
 
-// Function to fact check a single claim
-async function factCheckClaim(claim, settings) {
-  // Identify numerical values in the claim
-  const numericalValues = extractNumericalValues(claim);
+// Helper function to check if a claim contains numerical values
+function containsNumericalValue(claim) {
+  const currencyRegex = /\$\d+(\.\d+)?\s*(million|billion|trillion|thousand)?/gi;
+  const percentageRegex = /\b\d+(\.\d+)?%\b/gi;
+  const numberWithUnitRegex = /\b\d+(\.\d+)?\s*(people|individuals|users|customers|years|months|days)\b/gi;
   
-  // For each numerical value, check if it's correct
-  let isTrue = true;
-  let explanation = "";
-  let correction = null;
-  let sourceURL = "";
-  let evidenceText = "";
-  
-  // Use deterministic approach to decide if a claim is true or false
-  // to ensure consistency in the demo
-  if (numericalValues.length > 0) {
-    // Grab the first numerical value for demonstration
-    const incorrectValue = numericalValues[0];
-    const valueKey = `${incorrectValue.type}:${incorrectValue.value}`;
-    
-    // Deterministic selection of claims to mark as incorrect
-    // Key patterns that are likely to be factual claims
-    const shouldBeIncorrect = 
-      claim.includes("billion") || 
-      claim.includes("trillion") || 
-      (claim.includes("%") && !claim.includes("Consumer spending")) || 
-      claim.includes("S&P 500");
-    
-    isTrue = !shouldBeIncorrect;
-    
-    if (!isTrue) {
-      // Check if we've already created a correction for this value
-      if (correctionCache[valueKey]) {
-        correction = correctionCache[valueKey];
-        sourceURL = evidenceLinks.get(valueKey)?.url || "";
-        evidenceText = evidenceLinks.get(valueKey)?.evidence || "";
-      } else {
-        correction = generateRealisticCorrection(incorrectValue, claim);
-        correctionCache[valueKey] = correction;
-        
-        // Generate evidence source information
-        const evidenceSource = generateEvidenceSource(incorrectValue, correction, claim);
-        sourceURL = evidenceSource.url;
-        evidenceText = evidenceSource.evidence;
-        
-        // Store the evidence link
-        evidenceLinks.set(valueKey, evidenceSource);
-      }
-      
-      explanation = `The value ${incorrectValue.value} is incorrect. According to ${evidenceText}, the correct value is ${correction.correctedValue}.`;
-    } else {
-      explanation = "The numerical values in this claim appear to be accurate based on our verification.";
-    }
-  } else {
-    // Non-numerical claim - less likely to be marked incorrect
-    isTrue = true;
-    explanation = "This claim appears to be supported by reliable sources.";
-  }
-  
-  // Generate confidence score - higher for true claims
-  const confidence = isTrue ? 85 + (Math.random() * 10) : 65 + (Math.random() * 15);
-  
-  // Include relevant sources based on the claim type
-  const sources = [];
-  if (settings.sources.includes('wikipedia')) {
-    sources.push("Wikipedia");
-  }
-  
-  // Include specific sources based on claim content
-  if (claim.includes("economic") || claim.includes("billion") || claim.includes("trillion")) {
-    sources.push("U.S. Treasury Department");
-    sources.push("Bureau of Economic Analysis");
-  } else if (claim.includes("%") || claim.includes("rate")) {
-    sources.push("Bureau of Labor Statistics");
-    sources.push("Federal Reserve Economic Data");
-  } else if (claim.includes("market") || claim.includes("S&P")) {
-    sources.push("Financial Times");
-    sources.push("Bloomberg");
-  } else {
-    sources.push("Reuters");
-  }
-  
-  return {
-    claim,
-    isTrue,
-    isUncertain: false,
-    confidence: Math.floor(confidence),
-    explanation,
-    sources,
-    correction,
-    sourceURL,
-    evidenceText
-  };
+  return currencyRegex.test(claim) || 
+         percentageRegex.test(claim) || 
+         numberWithUnitRegex.test(claim);
 }
 
 // Helper function to extract numerical values from a claim
@@ -385,7 +398,7 @@ function generateRealisticCorrection(numericalValue, claim) {
   return correction;
 }
 
-// Generate evidence source URLs and text - Now with real, legitimate sources
+// Generate evidence source URLs and text
 function generateEvidenceSource(numericalValue, correction, claim) {
   let url = "";
   let evidence = "";
@@ -460,7 +473,7 @@ function generateEvidenceSource(numericalValue, correction, claim) {
   };
 }
 
-// Function to generate an overall analysis summary from individual fact checks
+// Function to generate an overall analysis summary
 function generateAnalysisSummary(article, checkedClaims) {
   // Calculate overall accuracy percentage
   const trueClaims = checkedClaims.filter(c => c.isTrue);
@@ -492,7 +505,7 @@ function generateAnalysisSummary(article, checkedClaims) {
   };
 }
 
-// Function to highlight facts in the page
+// Function to highlight facts in the page via content script
 function highlightFactsInPage(tabId, results) {
   if (!results || !results.facts || results.facts.length === 0) {
     return;

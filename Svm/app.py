@@ -1,0 +1,62 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+import joblib
+from claim_verifier import ClaimVerifier
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Enable CORS for the Chrome extension
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+# Load the pre-trained model
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'claim_verifier_model.joblib')
+print(f"Loading model from {MODEL_PATH}")
+
+try:
+    claim_verifier = ClaimVerifier()
+    claim_verifier.load_model(MODEL_PATH)
+    print("Model loaded successfully")
+except Exception as e:
+    print(f"Error loading model: {str(e)}")
+    exit(1)
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    # Get the claim from the request
+    data = request.json
+    if not data or 'claim' not in data:
+        return jsonify({
+            'error': 'Missing claim in request body',
+            'status': 'error'
+        }), 400
+    
+    claim = data['claim']
+    
+    try:
+        # Predict using the model
+        label, confidence = claim_verifier.predict_claim(claim)
+        
+        # Prepare the response
+        response = {
+            'claim': claim,
+            'isTrue': label == 'true',
+            'confidence': int(confidence * 100),
+            'status': 'success'
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy'})
+
+if __name__ == '__main__':
+    # Run the Flask app on localhost:5000
+    app.run(host='0.0.0.0', port=8000, debug=True) 

@@ -11,6 +11,53 @@ document.addEventListener('DOMContentLoaded', function() {
   const results = document.getElementById('results');
   const summary = document.getElementById('summary');
   const factsList = document.getElementById('facts');
+  
+  // Add server status indicator
+  const serverStatus = document.createElement('div');
+  serverStatus.id = 'serverStatus';
+  serverStatus.style.marginTop = '10px';
+  serverStatus.style.fontSize = '12px';
+  serverStatus.style.padding = '5px';
+  serverStatus.style.borderRadius = '3px';
+  serverStatus.style.textAlign = 'center';
+  
+  // Add it after the check button
+  checkPageButton.parentNode.insertBefore(serverStatus, checkPageButton.nextSibling);
+  
+  // Check server status on popup open
+  checkServerStatus();
+  
+  // Function to check if the server is running
+  function checkServerStatus() {
+    serverStatus.textContent = 'Checking API server...';
+    serverStatus.style.backgroundColor = '#FFF9C4';
+    serverStatus.style.color = '#333';
+    
+    fetch('http://localhost:5000/health')
+      .then(response => {
+        if (response.ok) {
+          serverStatus.textContent = '✓ API Server is running';
+          serverStatus.style.backgroundColor = '#E8F5E9';
+          serverStatus.style.color = '#2E7D32';
+          checkPageButton.disabled = false;
+        } else {
+          throw new Error('Server returned ' + response.status);
+        }
+      })
+      .catch(error => {
+        serverStatus.textContent = '✗ API Server is not running';
+        serverStatus.style.backgroundColor = '#FFEBEE';
+        serverStatus.style.color = '#C62828';
+        checkPageButton.disabled = true;
+        
+        // Add a help message
+        const helpText = document.createElement('div');
+        helpText.style.fontSize = '11px';
+        helpText.style.marginTop = '5px';
+        helpText.textContent = 'Run ./Svm/run_server.sh to start the API server';
+        serverStatus.appendChild(helpText);
+      });
+  }
 
   // Load saved settings
   chrome.storage.sync.get({
@@ -70,26 +117,38 @@ document.addEventListener('DOMContentLoaded', function() {
     summary.innerHTML = '';
     factsList.innerHTML = '';
     
-    // Get the active tab
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      const activeTab = tabs[0];
-      
-      // Send a message to the content script to analyze the page
-      chrome.tabs.sendMessage(activeTab.id, {action: "analyze"}, function(response) {
-        if (chrome.runtime.lastError) {
-          // Handle error when content script is not loaded
-          displayError("Could not connect to the page. Please refresh and try again.");
-          return;
+    // Check if the server is running first
+    fetch('http://localhost:5000/health')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('API server is not running');
         }
         
-        if (response && response.status === "analyzing") {
-          // Start polling for results from the background script
-          checkAnalysisStatus(activeTab.id);
-        } else {
-          displayError("Failed to start analysis. Please try again.");
-        }
+        // Continue with the analysis
+        return chrome.tabs.query({active: true, currentWindow: true});
+      })
+      .then(tabs => {
+        const activeTab = tabs[0];
+        
+        // Send a message to the content script to analyze the page
+        chrome.tabs.sendMessage(activeTab.id, {action: "analyze"}, function(response) {
+          if (chrome.runtime.lastError) {
+            // Handle error when content script is not loaded
+            displayError("Could not connect to the page. Please refresh and try again.");
+            return;
+          }
+          
+          if (response && response.status === "analyzing") {
+            // Start polling for results from the background script
+            checkAnalysisStatus(activeTab.id);
+          } else {
+            displayError("Failed to start analysis. Please try again.");
+          }
+        });
+      })
+      .catch(error => {
+        displayError(`Analysis failed: ${error.message}`);
       });
-    });
   });
 
   // Poll for analysis results
@@ -111,6 +170,22 @@ document.addEventListener('DOMContentLoaded', function() {
     loader.style.display = 'none';
     results.style.display = 'block';
     summary.innerHTML = `<div style="color: red;">${message}</div>`;
+    
+    // If the error is about the API server, add a help message
+    if (message.includes('API server')) {
+      const helpDiv = document.createElement('div');
+      helpDiv.style.marginTop = '10px';
+      helpDiv.style.fontSize = '12px';
+      helpDiv.innerHTML = `
+        <p>To start the local API server:</p>
+        <ol>
+          <li>Open a terminal</li>
+          <li>Navigate to the Svm directory</li>
+          <li>Run: <code>./run_server.sh</code></li>
+        </ol>
+      `;
+      summary.appendChild(helpDiv);
+    }
   }
 
   // Display analysis results
