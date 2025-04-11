@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NewsFactChecker</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>News Fact Checker</h1>
+      <p>AI-powered fact checking for online articles</p>
+    </header>
+    
+    <div class="controls">
+      <button id="checkPage" class="primary-button">Check This Article</button>
+      <div class="loader" id="loader" style="display: none;"></div>
+    </div>
+    
+    <div id="results" class="results">
+      <div id="summary" class="summary"></div>
+      <div id="facts" class="facts-list"></div>
+    </div>
+    
+    <div class="settings">
+      <button id="settingsBtn" class="secondary-button">Settings</button>
+      <div id="settingsPanel" class="settings-panel" style="display: none;">
+        <h3>Fact Checking Settings</h3>
+        <div class="setting-item">
+          <label for="confidenceThreshold">Confidence Threshold:</label>
+          <input type="range" id="confidenceThreshold" min="0" max="100" value="70">
+          <span id="confidenceValue">70%</span>
+        </div>
+        <div class="setting-item">
+          <label for="checkingSources">Sources to check against:</label>
+          <select id="checkingSources" multiple>
+            <option value="wikipedia" selected>Wikipedia</option>
+            <option value="news" selected>Trusted News Sites</option>
+            <option value="factCheckers" selected>Fact Checking Organizations</option>
+          </select>
+        </div>
+        <button id="saveSettings" class="primary-button">Save Settings</button>
+      </div>
+    </div>
+    
+    <footer>
+      <p>Powered by Deep Learning and Reinforcement Learning</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html> 

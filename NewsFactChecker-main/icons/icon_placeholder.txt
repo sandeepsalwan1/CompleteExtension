@@ -1,0 +1,16 @@
+To publish your extension, you'll need proper icon files in PNG format:
+
+1. icon16.png - 16x16 pixels
+2. icon48.png - 48x48 pixels
+3. icon128.png - 128x128 pixels
+
+You can create these icons using any image editor like Photoshop, GIMP, or Canva.
+
+Suggested design elements:
+- A magnifying glass over text/numbers
+- A checkmark or verification symbol
+- Blue/green color scheme for trustworthiness 
+
+For example, a simple blue circle with "FC" (Fact Checker) in white text with a small checkmark would work well.
+
+Store the final PNG files in this icons directory, replacing the placeholder files. 
