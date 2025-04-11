@@ -222,3 +222,12 @@ RULE_ERR_HANDLE_GENERAL_01:
 *   `[2023-07-07 14:49:45] All implementation tasks have been completed. Local development environment is set up.`
 *   `[2023-07-07 14:49:50] State updated: Status=COMPLETED.`
 *   `[2023-07-07 14:49:55] Summary of completed work: Created Flask API in Svm directory that serves the SVM model, and updated Chrome extension to communicate with the local API. Added documentation for setup and usage.`
+*   `[2023-08-15 10:00:00] User requested to double check everything is working and improve claim extraction.`
+*   `[2023-08-15 10:01:00] Started verification of the Flask server functionality. Confirmed server is working by testing health and predict endpoints.`
+*   `[2023-08-15 10:05:00] Enhanced claim extraction in background.js by improving pattern matching for numerical values, dates, and factual statements.`
+*   `[2023-08-15 10:10:00] Improved numerical value extraction to handle commas, more unit types, and standalone large numbers.`
+*   `[2023-08-15 10:15:00] Enhanced the claim verification logic by adding support for dates and standalone numbers.`
+*   `[2023-08-15 10:20:00] Created Svm/test_claims.py script to test the improved claim extraction with various claim types.`
+*   `[2023-08-15 10:25:00] Added colorama and requests to requirements.txt for the testing functionality.`
+*   `[2023-08-15 10:30:00] Successfully tested the improved claim extraction with 14 different types of claims.`
+*   `[2023-08-15 10:35:00] Verification complete: Flask server is working correctly and claim extraction has been significantly improved.`

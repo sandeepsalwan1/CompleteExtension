@@ -4,7 +4,7 @@ import json
 import sys
 
 # API endpoint URL
-API_URL = "http://localhost:5000/predict"
+API_URL = "http://localhost:8000/predict"
 
 # Test claims
 test_claims = [
@@ -20,13 +20,13 @@ def test_api():
     
     # First check if the server is running
     try:
-        health_response = requests.get("http://localhost:5000/health")
+        health_response = requests.get("http://localhost:8000/health")
         if health_response.status_code != 200:
             print(f"Error: Server is not healthy. Status code: {health_response.status_code}")
             return False
         print("Server is running and healthy.")
     except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to the server. Make sure it's running on http://localhost:5000")
+        print("Error: Could not connect to the server. Make sure it's running on http://localhost:8000")
         print("Run 'bash run_server.sh' in the Svm directory to start the server.")
         return False
     

@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     serverStatus.style.backgroundColor = '#FFF9C4';
     serverStatus.style.color = '#333';
     
-    fetch('http://localhost:5000/health')
+    fetch('http://localhost:8000/health')
       .then(response => {
         if (response.ok) {
           serverStatus.textContent = '✓ API Server is running';
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
     factsList.innerHTML = '';
     
     // Check if the server is running first
-    fetch('http://localhost:5000/health')
+    fetch('http://localhost:8000/health')
       .then(response => {
         if (!response.ok) {
           throw new Error('API server is not running');

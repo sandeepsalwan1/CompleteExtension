@@ -8,7 +8,7 @@ const correctionCache = {};
 const evidenceLinks = new Map();
 
 // API endpoint URL for the local Flask server
-const API_URL = "http://localhost:5000/predict";
+const API_URL = "http://localhost:8000/predict";
 
 // Listener for messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -197,14 +197,34 @@ function extractClaims(paragraphs) {
   const claims = [];
   const claimTexts = new Set(); // To avoid duplicate claims
   
-  // Patterns to match for numerical claims - using word boundaries
-  const currencyRegex = /\$\d+(\.\d+)?\s*(million|billion|trillion|thousand)?/gi;
-  const percentageRegex = /\b\d+(\.\d+)?%\b/gi; // Added word boundaries to ensure we catch full values
-  const numberWithUnitRegex = /\b\d+(\.\d+)?\s*(people|individuals|users|customers|years|months|days)\b/gi;
+  // Enhanced patterns to match for numerical claims - using word boundaries
+  const currencyRegex = /\$\d+(\.\d+)?(,\d+)*\s*(million|billion|trillion|thousand)?/gi;
+  const percentageRegex = /\b\d+(\.\d+)?%\b/gi;
+  const numberWithUnitRegex = /\b\d+(\.\d+)?(,\d+)*\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds)\b/gi;
+  const dateRegex = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(,\s+\d{4})?\b|\b\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)(,\s+\d{4})?\b|\b\d{4}\b/gi;
+  
+  // Patterns for recognizing factual claims
+  const factClaimIndicators = [
+    /\b(is|was|are|were)\s+(the|a|an)\s+.{3,30}\b/i,  // "is the largest", "was a significant"
+    /\b(has|had|have|having)\s+.{3,30}\b/i,  // "has increased", "had many impacts"
+    /\b(confirmed|announced|reported|stated|said|claimed|found|discovered|revealed)\s+that\b/i,
+    /\baccording to\b.{5,40}/i,
+    /\bin fact\b/i,
+    /\b(studies|research|data|evidence|experts|scientists)\s+(show|suggest|indicate|reveal|confirm)\b/i,
+    /\b(increased|decreased|reduced|improved|worsened|changed)\s+by\b/i,
+    /\bcaused\s+by\b/i, // causal claims
+    /\b(leads|led)\s+to\b/i, // causal claims
+    /\b(results|resulted)\s+in\b/i, // causal claims
+    /\bis\s+known\s+for\b/i,
+    /\b(first|largest|smallest|highest|lowest|best|worst|most|least)\b/i // superlatives
+  ];
+  
+  // Named entity indicators (improved to catch more entity types)
+  const namedEntityRegex = /\b[A-Z][a-z]+(\s+[A-Z][a-z]+){1,5}\b|\b[A-Z]{2,}\b/g; // Match proper nouns or acronyms
   
   for (const paragraph of paragraphs) {
-    // Split into sentences
-    const sentences = paragraph.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    // Split into sentences with better handling for various punctuation
+    const sentences = paragraph.split(/[.!?;]+/).filter(s => s.trim().length > 10);
     
     for (const sentence of sentences) {
       const trimmedSentence = sentence.trim();
@@ -212,7 +232,7 @@ function extractClaims(paragraphs) {
       // Skip if we've already processed this exact claim
       if (claimTexts.has(trimmedSentence)) continue;
       
-      // Check for numerical claims specifically
+      // Check for numerical claims
       const hasCurrency = currencyRegex.test(trimmedSentence);
       currencyRegex.lastIndex = 0; // Reset regex
       
@@ -222,40 +242,64 @@ function extractClaims(paragraphs) {
       const hasNumberWithUnit = numberWithUnitRegex.test(trimmedSentence);
       numberWithUnitRegex.lastIndex = 0; // Reset regex
       
-      // Check for factual indicators
-      const hasFactualIndicators = /\b(is|was|are|were|has|had|confirmed|announced|reported|according to|stated|said|claimed|found that)\b/i.test(trimmedSentence);
+      const hasDate = dateRegex.test(trimmedSentence);
+      dateRegex.lastIndex = 0; // Reset regex
       
-      const hasNamedEntity = /\b([A-Z][a-z]+ ){1,3}[A-Z][a-z]+\b/.test(trimmedSentence);
+      // Check for factual claim indicators
+      let hasFactualIndicator = false;
+      for (const regex of factClaimIndicators) {
+        if (regex.test(trimmedSentence)) {
+          hasFactualIndicator = true;
+          break;
+        }
+      }
+      
+      // Check for named entities
+      const namedEntities = trimmedSentence.match(namedEntityRegex) || [];
+      const hasNamedEntity = namedEntities.length > 0;
+      
+      // Determine if this is a claim worth checking
+      const isNumericalClaim = hasCurrency || hasPercentage || hasNumberWithUnit || hasDate;
+      const isFactualClaim = hasFactualIndicator && (hasNamedEntity || trimmedSentence.length > 40);
+      
+      // Add more sophisticated claim types
+      const containsStatistic = /\b(statistics|stat|study|poll|survey|rate|average|mean|median|percentage)\b/i.test(trimmedSentence);
+      const containsComparison = /\b(more than|less than|greater|higher|lower|better|worse|increased|decreased|compared to|comparison)\b/i.test(trimmedSentence);
+      const containsDates = hasDate && /\b(since|until|before|after|during|when)\b/i.test(trimmedSentence);
       
       // Add sentence if it contains numerical information or appears to make a factual claim
-      if ((hasCurrency || hasPercentage || hasNumberWithUnit) && (hasFactualIndicators || hasNamedEntity)) {
+      if (isNumericalClaim || isFactualClaim || containsStatistic || containsComparison || containsDates) {
         claims.push(trimmedSentence);
         claimTexts.add(trimmedSentence);
       }
     }
   }
   
-  // Limit to a reasonable number of claims (max 10)
-  return claims.slice(0, 10);
+  // Limit to a reasonable number of claims (max 15)
+  return claims.slice(0, 15);
 }
 
 // Helper function to check if a claim contains numerical values
 function containsNumericalValue(claim) {
-  const currencyRegex = /\$\d+(\.\d+)?\s*(million|billion|trillion|thousand)?/gi;
-  const percentageRegex = /\b\d+(\.\d+)?%\b/gi;
-  const numberWithUnitRegex = /\b\d+(\.\d+)?\s*(people|individuals|users|customers|years|months|days)\b/gi;
+  const currencyRegex = /\$\d{1,3}(,\d{3})*(\.\d+)?\s*(million|billion|trillion|thousand)?/gi;
+  const percentageRegex = /\b\d{1,3}(,\d{3})*(\.\d+)?%\b/gi;
+  const numberWithUnitRegex = /\b\d{1,3}(,\d{3})*(\.\d+)?\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds)\b/gi;
+  const dateRegex = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(,\s+\d{4})?\b|\b\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)(,\s+\d{4})?\b|\b\d{4}\b/gi;
+  const standaloneNumberRegex = /\b\d{1,3}(,\d{3})*(\.\d+)?\s*(million|billion|trillion|thousand)?\b(?!\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds|%))/gi;
   
   return currencyRegex.test(claim) || 
          percentageRegex.test(claim) || 
-         numberWithUnitRegex.test(claim);
+         numberWithUnitRegex.test(claim) ||
+         dateRegex.test(claim) ||
+         standaloneNumberRegex.test(claim);
 }
 
 // Helper function to extract numerical values from a claim
 function extractNumericalValues(claim) {
   const values = [];
   
-  // Find currency values
-  const currencyRegex = /(\$\d+(\.\d+)?\s*(million|billion|trillion|thousand)?)/gi;
+  // Find currency values - improved to handle commas in numbers
+  const currencyRegex = /(\$\d{1,3}(,\d{3})*(\.\d+)?\s*(million|billion|trillion|thousand)?)/gi;
   let match;
   while ((match = currencyRegex.exec(claim)) !== null) {
     values.push({
@@ -267,7 +311,7 @@ function extractNumericalValues(claim) {
   }
   
   // Find percentage values with better regex to capture full percentages
-  const percentageRegex = /(\b\d+(\.\d+)?%\b)/gi;
+  const percentageRegex = /(\b\d{1,3}(,\d{3})*(\.\d+)?%\b)/gi;
   while ((match = percentageRegex.exec(claim)) !== null) {
     values.push({
       type: 'percentage',
@@ -277,8 +321,8 @@ function extractNumericalValues(claim) {
     });
   }
   
-  // Find numbers with units
-  const numberWithUnitRegex = /(\b\d+(\.\d+)?\s*(people|individuals|users|customers|years|months|days)\b)/gi;
+  // Find numbers with more unit types
+  const numberWithUnitRegex = /(\b\d{1,3}(,\d{3})*(\.\d+)?\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds)\b)/gi;
   while ((match = numberWithUnitRegex.exec(claim)) !== null) {
     values.push({
       type: 'number-with-unit',
@@ -286,6 +330,39 @@ function extractNumericalValues(claim) {
       index: match.index,
       length: match[1].length
     });
+  }
+  
+  // Find date expressions
+  const dateRegex = /(\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(,\s+\d{4})?\b|\b\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)(,\s+\d{4})?\b|\b\d{4}\b)/gi;
+  while ((match = dateRegex.exec(claim)) !== null) {
+    values.push({
+      type: 'date',
+      value: match[1],
+      index: match.index,
+      length: match[1].length
+    });
+  }
+  
+  // Find standalone large numbers (like statistics)
+  const standaloneNumberRegex = /(\b\d{1,3}(,\d{3})*(\.\d+)?\s*(million|billion|trillion|thousand)?\b)(?!\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds|%))/gi;
+  while ((match = standaloneNumberRegex.exec(claim)) !== null) {
+    // Avoid duplicates with other categories
+    let isDuplicate = false;
+    for (const value of values) {
+      if (value.index === match.index) {
+        isDuplicate = true;
+        break;
+      }
+    }
+    
+    if (!isDuplicate) {
+      values.push({
+        type: 'standalone-number',
+        value: match[1],
+        index: match.index,
+        length: match[1].length
+      });
+    }
   }
   
   return values;
@@ -302,12 +379,18 @@ function generateRealisticCorrection(numericalValue, claim) {
     return correctionCache[cacheKey];
   }
   
+  // Helper function to parse numerical values with commas
+  function parseNumericString(str) {
+    // Remove commas and convert to float
+    return parseFloat(str.replace(/,/g, ''));
+  }
+  
   if (numericalValue.type === 'currency') {
-    // Extract the numeric portion
-    const numericMatch = /\$(\d+(\.\d+)?)\s*(million|billion|trillion|thousand)?/i.exec(originalValue);
+    // Extract the numeric portion - improved for comma handling
+    const numericMatch = /\$(\d{1,3}(,\d{3})*(\.\d+)?)\s*(million|billion|trillion|thousand)?/i.exec(originalValue);
     if (numericMatch) {
-      let number = parseFloat(numericMatch[1]);
-      const multiplier = numericMatch[3] || '';
+      let number = parseNumericString(numericMatch[1]);
+      const multiplier = numericMatch[4] || '';
       
       // Create realistic corrections based on context
       if (claim.includes('trillion')) {
@@ -325,16 +408,19 @@ function generateRealisticCorrection(numericalValue, claim) {
         number = Math.round(number * 1.25);
       }
       
+      // Format the corrected value with commas for readability
+      let formattedNumber = number.toString().includes('.') ? number.toString() : number.toLocaleString();
+      
       // Format the corrected value
-      correctedValue = `$${number}${multiplier ? ' ' + multiplier : ''}`;
+      correctedValue = `$${formattedNumber}${multiplier ? ' ' + multiplier : ''}`;
     } else {
       correctedValue = originalValue;
     }
   } else if (numericalValue.type === 'percentage') {
     // Extract the numeric portion
-    const numericMatch = /(\d+(\.\d+)?)%/i.exec(originalValue);
+    const numericMatch = /(\d{1,3}(,\d{3})*(\.\d+)?)%/i.exec(originalValue);
     if (numericMatch) {
-      let number = parseFloat(numericMatch[1]);
+      let number = parseNumericString(numericMatch[1]);
       
       // Different adjustment based on the type of percentage
       if (claim.includes("unemployment") && number < 5) {
@@ -361,12 +447,12 @@ function generateRealisticCorrection(numericalValue, claim) {
     } else {
       correctedValue = originalValue;
     }
-  } else {
-    // Number with unit
-    const numericMatch = /(\d+(\.\d+)?)\s*(people|individuals|users|customers|years|months|days)/i.exec(originalValue);
+  } else if (numericalValue.type === 'number-with-unit') {
+    // Number with unit - improved for comma handling
+    const numericMatch = /(\d{1,3}(,\d{3})*(\.\d+)?)\s*(people|individuals|users|customers|years|months|days|kilometers|miles|meters|feet|kg|tons|pounds)/i.exec(originalValue);
     if (numericMatch) {
-      let number = parseFloat(numericMatch[1]);
-      const unit = numericMatch[3] || '';
+      let number = parseNumericString(numericMatch[1]);
+      const unit = numericMatch[4] || '';
       
       // Create realistic corrections based on context
       if (unit === "people" && number > 10000) {
@@ -380,11 +466,70 @@ function generateRealisticCorrection(numericalValue, claim) {
         number = Math.round(number * 1.3);
       }
       
+      // Format the corrected value with commas for readability
+      let formattedNumber = number.toString().includes('.') ? number.toString() : number.toLocaleString();
+      
       // Format the corrected value
-      correctedValue = `${number} ${unit}`;
+      correctedValue = `${formattedNumber} ${unit}`;
     } else {
       correctedValue = originalValue;
     }
+  } else if (numericalValue.type === 'date') {
+    // Handle date corrections
+    const yearMatch = /\b(\d{4})\b/.exec(originalValue);
+    if (yearMatch) {
+      // Adjust the year slightly
+      const year = parseInt(yearMatch[1], 10);
+      let correctedYear;
+      
+      // Make reasonable year adjustments
+      if (claim.includes("founded") || claim.includes("established") || 
+          claim.includes("began") || claim.includes("started")) {
+        // For foundation dates, adjust by a few years
+        correctedYear = year + (Math.random() > 0.5 ? 2 : -2);
+      } else if (claim.includes("war") || claim.includes("battle") || 
+                claim.includes("revolution") || claim.includes("independence")) {
+        // For historical events, be more precise
+        correctedYear = year + (Math.random() > 0.5 ? 1 : -1);
+      } else {
+        // Default adjustment
+        correctedYear = year + (Math.random() > 0.7 ? 1 : (Math.random() > 0.4 ? -1 : 0));
+      }
+      
+      // Replace the year in the original value
+      correctedValue = originalValue.replace(year.toString(), correctedYear.toString());
+    } else {
+      correctedValue = originalValue;
+    }
+  } else if (numericalValue.type === 'standalone-number') {
+    // Handle standalone numbers - improved for comma handling
+    const numericMatch = /(\d{1,3}(,\d{3})*(\.\d+)?)\s*(million|billion|trillion|thousand)?/i.exec(originalValue);
+    if (numericMatch) {
+      let number = parseNumericString(numericMatch[1]);
+      const multiplier = numericMatch[4] || '';
+      
+      // Apply a reasonable adjustment based on the magnitude
+      if (number > 1000000) {
+        // Large numbers, smaller percentage change
+        number = Math.round(number * (0.9 + Math.random() * 0.4));
+      } else if (number > 1000) {
+        // Medium numbers
+        number = Math.round(number * (0.85 + Math.random() * 0.5));
+      } else {
+        // Small numbers, larger percentage change
+        number = Math.round(number * (0.8 + Math.random() * 0.6));
+      }
+      
+      // Format the corrected value with commas for readability
+      let formattedNumber = number.toString().includes('.') ? number.toString() : number.toLocaleString();
+      
+      // Format the corrected value
+      correctedValue = `${formattedNumber}${multiplier ? ' ' + multiplier : ''}`;
+    } else {
+      correctedValue = originalValue;
+    }
+  } else {
+    correctedValue = originalValue;
   }
   
   const correction = {

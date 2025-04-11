@@ -33,7 +33,7 @@ This project consists of two main components:
    ./run_server.sh
    ```
    
-   The server will run on http://localhost:5000
+   The server will run on http://localhost:8000
 
 5. You can test the API separately:
    ```
