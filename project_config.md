@@ -1,51 +1,46 @@
 # Project Configuration (LTM)
-
-*This file contains the stable, long-term context for the project.*
-*It should be updated infrequently, primarily when core goals, tech, or patterns change.*
-*The AI reads this at the start of major tasks or phases.*
+[...]
 
 ---
 
 ## Core Goal
 
-Establish a functional local development environment connecting the Chrome Extension project (`sandeepsalwan1-newsfactchecker`) with a local Python/Flask backend (`svm_backend`). The backend will load a pre-trained SVM model (`claim_verifier_model.joblib`), and serve predictions (true/false classification + confidence score) based on text claims sent from the extension. The extension needs to be configured to communicate with this local API.
+**Create** a local Python Flask API server within the existing `Svm` directory. This server must:
+1. Load the pre-trained SVM model (`Svm/claim_verifier_model.joblib`).
+2. Expose a POST API endpoint (e.g., `/predict` on localhost).
+3. Accept text claims via the API, use the model to predict true/false classification and confidence score, and return the results as JSON.
+4. Implement necessary CORS configuration.
+
+**Modify** the Chrome Extension (`NewsFactChecker-main`) JavaScript code to:
+1. Send extracted text claims to the local Flask API endpoint using the `Workspace` API.
+2. Receive and handle the JSON response (classification and confidence).
+3. Display the results in the extension UI.
+4. Update `manifest.json` with required permissions for localhost access.
+
+The overall objective is to establish a functional local development environment where the extension communicates with the newly created local backend API for fact-checking predictions.
 
 ---
 
 ## Tech Stack
 
-Your choice of tech stack is up to you. Any is acceptable. 
+* **Frontend (Extension):**
+    * Project: `NewsFactChecker-main`
+    * Language: JavaScript (ES6+)
+    * APIs: Chrome Extension APIs, `Workspace` API
+    * Manifest: `manifest.json` (Version 3)
+    * Files: `popup.js`, `background.js`, `content.js`, `popup.html`, `popup.css`
+* **Backend:**
+    * Directory: `Svm`
+    * Language: Python 3.x
+    * Framework: Flask (Needs to be added/implemented)
+    * ML Libraries: Joblib, Scikit-learn, NLTK, Pandas, Numpy (based on `Svm/requirements.txt`)
+    * Model File: `Svm/claim_verifier_model.joblib`
+    * Dependencies: `Svm/requirements.txt`
+* **API Communication:**
+    * Protocol: HTTP (POST)
+    * Data Format: JSON
+    * Server Address: `localhost` (configurable)
+* **Environment:** Local Development
 
 ---
-
-## Critical Patterns & Conventions
-
-* **Backend API Endpoint:**
-    * Method: `POST`
-    * Request Body (JSON): `{ "claim": "Text of the claim to verify" }`
-    * Response Body (Success - JSON): `{ "classification": "true" | "false", "confidence": <float> }`
-    * Response Body (Error - JSON): `{ "error": "<error message>" }`
-* **Backend Server:**
-    * Must run within the `svm_backend` directory context.
-    * Must load `claim_verifier_model.joblib` successfully on startup.
-    * Must implement CORS (Cross-Origin Resource Sharing) correctly to allow requests from `chrome-extension://<your_extension_id>`. The extension ID will be needed.
-* **Chrome Extension:**
-    * Modify relevant JavaScript file(s) (e.g., `content_script.js`, `popup.js`, or `background.js` depending on architecture) to:
-        * Extract the claim text.
-        * Use the `Workspace` API to send a POST request to localhost with the claim in the JSON body.
-        * Handle the JSON response (both success and error cases).
-        * Display the `classification` and `confidence` score appropriately in the extension's UI.
-    * Update `manifest.json` to include permissions for accessing localhost.
-* **Error Handling:** Implement basic error handling on both sides (e.g., Flask returns 500 on model load failure, extension handles network errors or non-JSON responses).
-
----
-
-## Key Constraints
-
-* **Local Development Only:** This setup is strictly for local development and testing. Not intended for production deployment.
-* **Existing Codebase:** Assume the basic structure of the Chrome Extension (`sandeepsalwan1-newsfactchecker`) and the `svm_backend` directory might exist. Focus is on configuring the interaction, API implementation, and environment setup.
-* **Model File:** The `claim_verifier_model.joblib` file must be present and compatible with the Python environment's libraries (joblib, scikit-learn version).
-* **Dependencies:**
-    * Python dependencies (Flask, joblib, scikit-learn, etc.) must be managed, likely via a `requirements.txt` file in `svm_backend`.
-    * Chrome Extension dependencies (if any) are managed via its structure.
-* **Separate Processes:** The Flask server and the Chrome browser (running the extension) are separate processes that need to run concurrently during development.
+[...]
