@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       results: null,
       error: null
     };
-    
+     
     // Clear correction cache for new article analysis
     Object.keys(correctionCache).forEach(key => delete correctionCache[key]);
     evidenceLinks.clear();
